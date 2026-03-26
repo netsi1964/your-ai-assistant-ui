@@ -64,3 +64,107 @@ The assistant produces a structured JSON document with two top-level sections:
 - **AI context injection** — the JSON output can be fed back into an AI assistant as context, so it can answer user questions about the website accurately.
 - **Accessibility and onboarding** — the descriptions make it easy for new users or developers to understand what a website offers without having to browse every page.
 - **Integration-ready** — the structured JSON format makes it easy to integrate with other tools, chatbots, documentation systems, or testing pipelines.
+
+## Technical foundation — WebMCP, Android and iOS
+
+The JSON sitemap produced by this tool is the *description layer*. To make a website or app fully agent-ready, it pairs with a platform-level *execution layer* so that AI agents can not only understand the site but also act on it.
+
+### Web — WebMCP
+
+[WebMCP](https://github.com/webmcp/webmcp) lets websites expose functions (tools) directly to AI agents in the browser. Instead of scraping HTML or simulating clicks, agents call these tools in a structured and reliable way — exactly as described by the JSON output.
+
+### Android — AppFunctions (available now)
+
+**AppFunctions** is the official Android equivalent of WebMCP. Built into Android 16 (with a Jetpack backport), it lets apps expose self-describing tools using the `@AppFunction` annotation. A schema is generated automatically at build time, and AI agents like Gemini can call the functions directly via natural language.
+
+```kotlin
+@AppFunction(isDescribedByKDoc = true)
+suspend fun checkPensionScore(
+    appFunctionContext: AppFunctionContext,
+    userId: String? = null
+): PensionScoreResult { /* … */ }
+```
+
+### iOS — App Intents + MCP (iOS 26.1+)
+
+Apple is integrating MCP support directly into the existing **App Intents** framework (spotted in iOS 26.1 beta). Once stable, apps can expose their functions via App Intents and MCP-compatible agents (ChatGPT, Claude, etc.) will call them without any extra code.
+
+```swift
+struct CheckPensionScoreIntent: AppIntent {
+    static var title: LocalizedStringResource = "Check Pension Score"
+    func perform() async throws -> some IntentResult { /* … */ }
+}
+```
+
+### Any app today — mobile-mcp
+
+[mobile-mcp](https://github.com/mobile-next/mobile-mcp) is an open-source bridge that lets AI agents automate *any* iOS or Android app today — no changes to the target app required. It uses accessibility APIs and screen coordinates as a bridge until native MCP support is universal.
+
+### Platform overview
+
+| Platform | Technology | Status |
+|---|---|---|
+| Web | WebMCP / MCP | Available now |
+| Android | AppFunctions (`@AppFunction`) | Available now (Android 16 + Jetpack) |
+| iOS | App Intents + MCP | In beta (iOS 26.1) |
+| iOS & Android (any app) | mobile-mcp (bridge) | Available now |
+
+For detailed documentation and links, see [`research/ios-android.md`](research/ios-android.md).
+
+## Implementation examples
+
+Below is a quick snapshot of how the sitemap concept maps to real platform integrations. Full examples with setup instructions are in [`research/code-examples.md`](research/code-examples.md).
+
+### Android — `@AppFunction`
+
+```kotlin
+@AppFunction(isDescribedByKDoc = true)
+suspend fun fetchPensionsInfo(
+    appFunctionContext: AppFunctionContext,
+    externalProvider: String
+): PensionsInfoResult {
+    val data = pensionsInfoService.fetchFromProvider(externalProvider)
+    return PensionsInfoResult(data)
+}
+```
+
+### iOS — `AppIntent`
+
+```swift
+struct FetchPensionsInfoIntent: AppIntent {
+    static var title: LocalizedStringResource = "Fetch PensionsInfo"
+    @Parameter(title: "Provider") var provider: String
+
+    func perform() async throws -> some IntentResult & ReturnsValue<PensionsInfoResult> {
+        let data = await PensionsInfoService.shared.fetch(from: provider)
+        return .result(value: PensionsInfoResult(data: data))
+    }
+}
+```
+
+### mobile-mcp — MCP server config
+
+```json
+{
+  "mcpServers": {
+    "mobile-mcp": {
+      "command": "npx",
+      "args": ["-y", "@mobilenext/mobile-mcp@latest"]
+    }
+  }
+}
+```
+
+### How the pieces fit together
+
+```
+LLM Sitemap JSON (this project)
+        │
+        ├── Web:      WebMCP tools exposed on the website
+        ├── Android:  AppFunctions (@AppFunction annotations)
+        ├── iOS:      App Intents + MCP (iOS 26.1+)
+        └── Any app:  mobile-mcp bridge (works today)
+```
+
+The sitemap tells the agent *what exists* and *what it can do*.
+The platform integration tells the agent *how to do it*.
